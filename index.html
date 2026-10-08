@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#3c7463">
+  <meta name="description" content="可自訂名稱的班級公告牆，多看板、分類欄位與自訂背景。">
+  <title>班級公告牆</title>
+  <link rel="stylesheet" href="styles.css?v=2.1">
+  <script defer src="app.js?v=2.1"></script>
+</head>
+<body>
+  <header class="topbar">
+    <button class="brand" id="boardsBtn" aria-haspopup="dialog"><strong id="siteTitle">班級公告牆</strong><span class="chevron">⌄</span></button>
+    <div class="topbar-actions">
+      <label class="search-box"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" aria-label="搜尋公告" placeholder="搜尋標題、內容、分類…"></label>
+      <button class="button secondary" id="themeBtn"><span aria-hidden="true">◐</span> 背景與色彩</button>
+      <button class="button secondary" id="sectionsBtn"><span aria-hidden="true">▥</span> 管理分類</button>
+      <button class="button secondary" id="filterToggleBtn" aria-expanded="false">篩選／版面</button>
+      <button class="button secondary" id="readModeBtn" aria-pressed="false">◎ 閱讀模式</button>
+      <button class="button secondary" id="siteSettingsBtn" aria-label="網站名稱設定">⚙</button>
+    </div>
+  </header>
+  <main id="boardCanvas" class="board-canvas">
+    <section class="board-hero">
+      <span class="hero-icon" id="siteIcon">✦</span>
+      <div class="hero-copy">
+        <div class="author-line"><span id="siteSubtitle">班級消息・學習資源</span><span id="storageStatus" class="storage-status">本機試用版</span><span id="postCount"></span></div>
+        <div class="title-row"><h1 id="boardTitle"></h1><button class="icon-button" id="editBoardBtn" aria-label="編輯看板名稱與說明" title="編輯看板">✎</button></div>
+        <p id="boardDescription"></p>
+        <p class="header-caption" id="siteHeaderLabel">一起收藏班級的每一天</p>
+      </div>
+    </section>
+    <div class="board-controls" id="boardControls" hidden>
+      <nav id="filterRow" class="filter-row" aria-label="分類篩選"></nav>
+      <div class="view-toggle" aria-label="顯示方式"><button id="columnViewBtn" class="active" aria-pressed="true">▥ 欄位</button><button id="gridViewBtn" aria-pressed="false">▦ 卡片</button></div>
+    </div>
+    <p id="searchSummary" class="search-summary" hidden></p>
+    <section id="columns" class="columns" aria-label="公告分類欄位"></section>
+    <footer class="board-footer"><span>設計 by 楊依依老師｜Emily AI Studio</span><span id="siteTagline">把每一份提醒，放在剛剛好的位置。</span></footer>
+  </main>
+
+  <dialog id="boardsDialog" class="modal drawer" aria-labelledby="boardsHeading">
+    <div class="modal-head"><div><p class="eyebrow">YOUR BOARDS</p><h2 id="boardsHeading">我的看板</h2></div><button type="button" class="close-button" data-close aria-label="關閉">×</button></div>
+    <div class="dialog-content">
+      <p class="helper">每個看板都有自己的分類、公告與背景。</p>
+      <nav id="boardList" class="board-list"></nav>
+      <button class="button primary full" id="addBoardBtn">＋ 建立新看板</button>
+      <div class="backup-block"><h3>資料備份</h3><p class="helper">目前資料儲存在這個瀏覽器。換裝置或換開啟網址前，請先匯出備份。</p><div class="inline-actions"><button class="button secondary" id="exportBtn">匯出備份</button><label class="button secondary file-button">匯入備份<input id="importFile" type="file" accept=".json,application/json"></label></div></div>
+    </div>
+  </dialog>
+
+  <dialog id="siteSettingsDialog" class="modal" aria-labelledby="siteSettingsHeading">
+    <form id="siteSettingsForm" class="modal-form">
+      <div class="modal-head"><div><p class="eyebrow">YOUR CLASSROOM</p><h2 id="siteSettingsHeading">網站名稱設定</h2></div><button type="button" class="close-button" data-close aria-label="關閉">×</button></div>
+      <div class="dialog-content">
+        <label>網站名稱<input id="siteNameInput" required maxlength="80" placeholder="例如：四年三班的消息小站"></label>
+        <label>上方副標題或老師署名<input id="siteSubtitleInput" maxlength="100" placeholder="例如：陳老師的班級小角落"></label>
+        <label>頁首小標語<input id="siteHeaderInput" maxlength="100" placeholder="例如：今天，也一起好好學習"></label>
+        <label>頁尾小標語<input id="siteTaglineInput" maxlength="150" placeholder="可留白"></label>
+        <label>網站圖示<input id="siteIconInput" maxlength="10" placeholder="例如：☀ 或 🌱"></label>
+        <p class="helper">看板名稱與說明可用標題旁的「✎」修改；分類名稱在「管理分類」修改。頁尾保留設計署名。</p>
+      </div>
+      <div class="modal-actions"><button type="button" class="button secondary" data-close>取消</button><button type="submit" class="button primary">儲存名稱設定</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="themeDialog" class="modal" aria-labelledby="themeHeading">
+    <form id="themeForm" class="modal-form">
+      <div class="modal-head"><div><p class="eyebrow">MAKE IT YOURS</p><h2 id="themeHeading">背景與色彩</h2></div><button type="button" class="close-button" data-close aria-label="關閉">×</button></div>
+      <div class="dialog-content">
+        <div id="appearancePreview" class="appearance-preview"><span class="preview-title">你的專屬公告牆</span><div class="mini-columns"><span>重要公告<br><i></i><i></i></span><span>聯絡簿<br><i></i></span><span>課程資源<br><i></i><i></i></span></div></div>
+        <h3 class="field-title">精選色調</h3><div id="themeOptions" class="theme-options"></div>
+        <div class="two-fields"><label>自訂底色<div class="color-control"><input id="backgroundColor" type="color" value="#e6efe9" aria-label="自訂底色"><input id="backgroundHex" type="text" aria-label="底色十六進位色碼" pattern="#[0-9a-fA-F]{6}" maxlength="7"></div></label><label>按鈕與重點色<div class="color-control"><input id="accentColor" type="color" value="#3c7463" aria-label="按鈕與重點色"><input id="accentHex" type="text" aria-label="重點色十六進位色碼" pattern="#[0-9a-fA-F]{6}" maxlength="7"></div></label></div>
+        <label>背景樣式<select id="backgroundStyle"><option value="soft">柔和漸層</option><option value="solid">純色背景</option><option value="dots">細緻點點</option><option value="photo">自訂圖片</option></select></label>
+        <label class="upload-zone">＋ 上傳自己喜歡的底圖<input id="backgroundFile" type="file" accept="image/png,image/jpeg,image/webp"><small>JPG、PNG、WebP，最高 15 MB；會自動縮圖。</small></label>
+        <div class="image-status"><span id="backgroundFileStatus">尚未上傳底圖</span><button type="button" id="removeBackgroundBtn" class="text-button">移除底圖</button></div>
+        <label id="overlayLabel">底圖柔化 <span id="overlayValue">25%</span><input id="overlayRange" type="range" min="0" max="85" value="25"><small>增加柔化能讓標題與公告更容易閱讀。</small></label>
+        <p class="helper">外觀套用在目前看板。關閉或取消不會儲存變更。</p>
+      </div>
+      <div class="modal-actions"><button type="button" class="button secondary" data-close>取消</button><button type="submit" class="button primary" id="saveThemeBtn">套用外觀</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="postDialog" class="modal" aria-labelledby="postDialogTitle">
+    <form id="postForm" class="modal-form">
+      <div class="modal-head"><div><p class="eyebrow">A LITTLE UPDATE</p><h2 id="postDialogTitle">新增公告</h2></div><button type="button" class="close-button" data-close aria-label="關閉">×</button></div>
+      <div class="dialog-content">
+        <input type="hidden" id="postId">
+        <label>公告標題<input id="postTitle" required maxlength="100" placeholder="替這則公告取個清楚的標題"></label>
+        <div class="two-fields"><label>分類<select id="postSection" required></select></label><label>卡片色彩<select id="postColor"><option value="white">奶油白</option><option value="mint">薄荷綠</option><option value="peach">蜜桃橘</option><option value="blue">天空藍</option><option value="rose">櫻花粉</option></select></label></div>
+        <label>公告內容<textarea id="postBody" rows="6" maxlength="12000" placeholder="寫下提醒、學習資源或活動資訊…"></textarea><small>可保留換行；純圖片公告也能發布。</small></label>
+        <label class="upload-zone compact">＋ 上傳公告圖片<input id="postImageFile" type="file" accept="image/png,image/jpeg,image/webp"><small>圖片會自動縮小，點選公告後可放大。</small></label>
+        <div id="postImagePreview" class="post-image-preview" hidden><img id="postImageThumb" alt="公告圖片預覽"><button type="button" class="text-button" id="removePostImageBtn">移除圖片</button></div>
+        <label>附件或網頁連結<input id="postLink" type="url" placeholder="https://…"><small>可貼 Google Drive、影片、教材或其他網頁連結。</small></label>
+        <label class="check-label"><input id="postPinned" type="checkbox"> 置頂，讓重要提醒排在最前面</label>
+        <p class="form-error" id="postError" role="alert" hidden></p>
+      </div>
+      <div class="modal-actions"><button type="button" class="button secondary" data-close>取消</button><button type="submit" class="button primary" id="savePostBtn">儲存公告</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="boardDialog" class="modal" aria-labelledby="boardDialogTitle">
+    <form id="boardForm" class="modal-form">
+      <div class="modal-head"><div><p class="eyebrow">A NEW SPACE</p><h2 id="boardDialogTitle">新增看板</h2></div><button type="button" class="close-button" data-close aria-label="關閉">×</button></div>
+      <div class="dialog-content"><input type="hidden" id="boardId"><label>看板名稱<input id="boardName" required maxlength="100" placeholder="例如：116學年度班級公告"></label><label>看板說明<textarea id="boardDesc" rows="3" maxlength="500" placeholder="一句勉勵的話，或給家長的小提醒"></textarea></label></div>
+      <div class="modal-actions"><button type="button" class="button secondary" data-close>取消</button><button type="submit" class="button primary">儲存看板</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="sectionsDialog" class="modal" aria-labelledby="sectionsHeading">
+    <div class="modal-head"><div><p class="eyebrow">KEEP IT ORGANIZED</p><h2 id="sectionsHeading">管理分類</h2></div><button type="button" class="close-button" data-close aria-label="關閉">×</button></div>
+    <div class="dialog-content"><p class="helper">新增、重新命名或調整順序。移除分類時，公告會移到其他分類。</p><div id="sectionList" class="section-list"></div><form id="addSectionForm" class="inline-form"><input id="newSectionName" required maxlength="80" aria-label="新分類名稱" placeholder="輸入新分類名稱"><button type="submit" class="button primary">＋ 新增</button></form></div>
+    <div class="modal-actions"><button type="button" class="button primary" data-close>完成</button></div>
+  </dialog>
+
+  <dialog id="deleteSectionDialog" class="modal small-modal" aria-labelledby="deleteSectionHeading">
+    <form id="deleteSectionForm" class="modal-form">
+      <div class="modal-head"><h2 id="deleteSectionHeading">移除分類</h2><button type="button" class="close-button" data-close aria-label="關閉">×</button></div>
+      <div class="dialog-content"><p id="deleteSectionMessage"></p><input id="deleteSectionId" type="hidden"><label>公告移到<select id="moveSectionTarget"></select></label><p class="helper">只移除分類，裡面的公告會完整保留。</p></div>
+      <div class="modal-actions"><button type="button" class="button secondary" data-close>取消</button><button type="submit" class="button danger">移除分類</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="detailDialog" class="modal detail-modal" aria-labelledby="detailTitle">
+    <div class="modal-head"><div><p class="eyebrow" id="detailMeta"></p><h2 id="detailTitle"></h2></div><button type="button" class="close-button" data-close aria-label="關閉">×</button></div>
+    <div class="dialog-content"><button type="button" id="detailImageBtn" class="image-button" aria-label="放大公告圖片" hidden><img id="detailImage" alt="公告圖片"></button><p id="detailBody" class="detail-body"></p><a id="detailLink" class="button secondary" target="_blank" rel="noopener noreferrer" hidden>↗ 開啟附件或連結</a></div>
+    <div class="modal-actions"><button type="button" class="button secondary" data-close>關閉</button><button type="button" id="detailEditBtn" class="button primary">編輯公告</button></div>
+  </dialog>
+
+  <dialog id="imageDialog" class="image-dialog" aria-label="放大公告圖片"><button type="button" class="close-button" data-close aria-label="關閉">×</button><img id="largeImage" alt="放大公告圖片"></dialog>
+  <dialog id="confirmDialog" class="modal small-modal" aria-labelledby="confirmHeading"><div class="modal-head"><h2 id="confirmHeading">移除公告</h2><button type="button" class="close-button" data-close aria-label="關閉">×</button></div><div class="dialog-content"><p id="confirmMessage"></p><p class="helper">移除後可立即按「復原」。</p></div><div class="modal-actions"><button type="button" class="button secondary" data-close>取消</button><button type="button" id="confirmDeleteBtn" class="button danger">移除公告</button></div></dialog>
+  <button class="button primary floating-add" id="addPostBtn">＋ 新增公告</button>
+  <div class="toast" id="toast" role="status"><span id="toastMessage"></span><button type="button" id="undoBtn" hidden>復原</button></div>
+</body>
+</html>
