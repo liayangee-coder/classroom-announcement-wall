@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#3c7463">
   <meta name="description" content="可自訂名稱的班級公告牆，多看板、分類欄位與自訂背景。">
   <title>班級公告牆</title>
-  <link rel="stylesheet" href="styles.css?v=2.1">
-  <script defer src="app.js?v=2.1"></script>
+  <link rel="stylesheet" href="styles.css?v=3.0">
+  <script defer src="app.js?v=3.0"></script>
 </head>
 <body>
   <header class="topbar">
@@ -18,6 +18,8 @@
       <button class="button secondary" id="sectionsBtn"><span aria-hidden="true">▥</span> 管理分類</button>
       <button class="button secondary" id="filterToggleBtn" aria-expanded="false">篩選／版面</button>
       <button class="button secondary" id="readModeBtn" aria-pressed="false">◎ 閱讀模式</button>
+      <button class="button secondary" id="cloudRefreshBtn" hidden>↻ 更新</button>
+      <button class="button secondary" id="shareBtn">↗ 分享</button>
       <button class="button secondary" id="siteSettingsBtn" aria-label="網站名稱設定">⚙</button>
     </div>
   </header>
@@ -129,6 +131,16 @@
   </dialog>
 
   <dialog id="imageDialog" class="image-dialog" aria-label="放大公告圖片"><button type="button" class="close-button" data-close aria-label="關閉">×</button><img id="largeImage" alt="放大公告圖片"></dialog>
+  <dialog id="shareDialog" class="modal small-modal" aria-labelledby="shareHeading">
+    <div class="modal-head"><div><p class="eyebrow">SHARE SAFELY</p><h2 id="shareHeading">分享公告牆</h2></div><button type="button" class="close-button" data-close aria-label="關閉">×</button></div>
+    <div class="dialog-content">
+      <p id="shareDescription" class="helper">複製家長唯讀網址。這個網址不包含管理密鑰，無法修改公告。</p>
+      <label>家長唯讀網址<input id="publicShareUrl" type="url" readonly></label>
+      <div class="share-card"><span aria-hidden="true">☁</span><div><strong id="shareModeTitle">雲端公告牆</strong><p id="shareModeNote">跨裝置開啟時會讀取同一份公告。</p></div></div>
+      <p class="helper privacy-note">請勿張貼學生真實姓名、聯絡方式、醫療資料或未授權照片。</p>
+    </div>
+    <div class="modal-actions"><button type="button" class="button secondary" data-close>關閉</button><button type="button" class="button primary" id="copyShareBtn">複製唯讀網址</button></div>
+  </dialog>
   <dialog id="confirmDialog" class="modal small-modal" aria-labelledby="confirmHeading"><div class="modal-head"><h2 id="confirmHeading">移除公告</h2><button type="button" class="close-button" data-close aria-label="關閉">×</button></div><div class="dialog-content"><p id="confirmMessage"></p><p class="helper">移除後可立即按「復原」。</p></div><div class="modal-actions"><button type="button" class="button secondary" data-close>取消</button><button type="button" id="confirmDeleteBtn" class="button danger">移除公告</button></div></dialog>
   <button class="button primary floating-add" id="addPostBtn">＋ 新增公告</button>
   <div class="toast" id="toast" role="status"><span id="toastMessage"></span><button type="button" id="undoBtn" hidden>復原</button></div>

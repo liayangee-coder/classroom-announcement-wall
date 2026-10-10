@@ -22,7 +22,7 @@ const e = value => String(value ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<
 const clone = value => JSON.parse(JSON.stringify(value));
 const uid = prefix => prefix + '-' + (window.crypto?.randomUUID?.() || Date.now().toString(36) + Math.random().toString(36).slice(2));
 const isHex = value => /^#[0-9a-f]{6}$/i.test(value || '');
-const isImage = value => typeof value === 'string' && /^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(value);
+const isImage = value => typeof value === 'string' && (/^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(value) || /^https:\/\//i.test(value));
 function safeLink(value) { try { const u = new URL(value); return ['https:','http:'].includes(u.protocol) ? u.href : ''; } catch { return ''; } }
 function defaultAppearance(theme) { const t = themes[theme] || themes.forest; return { background:t.background, accent:t.accent, style:'soft', image:'', overlay:25 }; }
 function normalizeState(data) {
@@ -66,9 +66,65 @@ function loadState() {
   catch { loadWarning='原資料讀取失敗；已保留原始資料，請先匯出原始備份。'; return normalizeState(clone(starter)); }
 }
 let state = loadState();
+const GAS_MODE=!!window.google?.script?.run;
+const adminKey=GAS_MODE&&location.hash.startsWith('#admin=')?decodeURIComponent(location.hash.slice(7)):'';
+let canEdit=!GAS_MODE, cloudRevision='', cloudPublicUrl=location.href.split('#')[0], syncTimer=0, syncInFlight=false, syncQueued=false, cloudPollTimer=0;
 let activeFilter='all', layout='columns', readMode=false, appearanceDraft=null, postImageDraft='', detailId='', deleteCallback=null, undoSnapshot=null, uploadToken=0, imageBusy=0;
 function board() { return state.boards.find(b=>b.id===state.activeBoard) || state.boards[0]; }
+function serverCall(name,...args){
+  return new Promise((resolve,reject)=>google.script.run.withSuccessHandler(resolve).withFailureHandler(err=>reject(new Error(err?.message||String(err))))[name](...args));
+}
+function setCloudStatus(text,tone=''){
+  const el=$('storageStatus');if(!el)return;el.textContent=text;el.dataset.tone=tone;
+}
+async function initializeCloud(){
+  if(!GAS_MODE)return;
+  document.body.classList.add('cloud-mode');setCloudStatus('雲端連線中…','working');
+  try{
+    const result=await serverCall('getCloudState',adminKey);
+    state=normalizeState(result.state);canEdit=!!result.canEdit;cloudRevision=result.revision||'';cloudPublicUrl=result.publicUrl||cloudPublicUrl;
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+    $('cloudRefreshBtn').hidden=false;
+    render();setCloudStatus(canEdit?'雲端管理模式':'家長唯讀模式',canEdit?'ok':'readonly');
+    clearInterval(cloudPollTimer);
+    if(!canEdit)cloudPollTimer=setInterval(()=>{if(!document.hidden)refreshCloudState(false);},30000);
+  }catch(err){
+    canEdit=false;document.body.classList.add('viewer-mode');setCloudStatus('連線失敗','error');toast('雲端資料讀取失敗：'+err.message);
+  }
+}
+async function refreshCloudState(showNotice=true){
+  if(!GAS_MODE||syncInFlight)return;
+  setCloudStatus('正在更新…','working');
+  try{
+    const result=await serverCall('getCloudState',adminKey);
+    const changed=(result.revision||'')!==cloudRevision;
+    canEdit=!!result.canEdit;cloudPublicUrl=result.publicUrl||cloudPublicUrl;
+    if(changed){
+      state=normalizeState(result.state);cloudRevision=result.revision||'';localStorage.setItem(STORAGE_KEY,JSON.stringify(state));render();
+    }
+    setCloudStatus(canEdit?'雲端管理模式':'家長唯讀模式',canEdit?'ok':'readonly');
+    if(showNotice)toast(changed?'已載入最新公告。':'目前已是最新內容。');
+  }catch(err){setCloudStatus('更新失敗','error');if(showNotice)toast('無法更新：'+err.message);}
+}
+function queueCloudSave(){
+  if(!GAS_MODE||!canEdit)return;
+  clearTimeout(syncTimer);setCloudStatus('正在同步…','working');
+  syncTimer=setTimeout(syncCloudState,450);
+}
+async function syncCloudState(){
+  if(syncInFlight){syncQueued=true;return;}
+  syncInFlight=true;
+  try{
+    const result=await serverCall('saveCloudState',JSON.stringify(state),adminKey,cloudRevision);
+    state=normalizeState(result.state);cloudRevision=result.revision||cloudRevision;localStorage.setItem(STORAGE_KEY,JSON.stringify(state));render();setCloudStatus('已同步雲端','ok');
+  }catch(err){
+    setCloudStatus('同步失敗','error');toast('雲端同步失敗，本機副本已保留：'+err.message);
+  }finally{
+    syncInFlight=false;if(syncQueued){syncQueued=false;syncCloudState();}
+  }
+}
 function commit(mutator, message, reversible=false) {
+  if(GAS_MODE&&!canEdit){toast('這是家長唯讀網址，無法修改公告。');return false;}
   if (loadWarning) { toast(loadWarning); return false; }
   const before = clone(state); const next = clone(state);
   try {
@@ -79,6 +135,7 @@ function commit(mutator, message, reversible=false) {
     render();
     if ($('sectionsDialog').open) renderSections();
     toast(message, reversible);
+    queueCloudSave();
     return true;
   } catch (err) {
     toast(err.name==='QuotaExceededError'?'儲存空間不足。這次修改未儲存，請匯出備份或移除不需要的圖片。':'無法儲存，這次修改未套用。請匯出備份並確認瀏覽器允許儲存。');
@@ -124,7 +181,7 @@ function render() {
   $('siteHeaderLabel').textContent=state.settings.header;
   $('siteTagline').textContent=state.settings.tagline;
   $('siteIcon').textContent=state.settings.icon||'✦';
-  document.title=b.name+'｜'+state.settings.name; document.body.classList.toggle('read-mode',readMode);
+  document.title=b.name+'｜'+state.settings.name; document.body.classList.toggle('read-mode',readMode);document.body.classList.toggle('viewer-mode',GAS_MODE&&!canEdit);
   $('readModeBtn').textContent=readMode?'✎ 返回編輯':'◎ 閱讀模式'; $('readModeBtn').setAttribute('aria-pressed',readMode);
   renderBoards(); renderFilters(); renderColumns();
 }
@@ -140,7 +197,7 @@ function matchingPosts() {
 }
 function postCard(p) {
   const image=p.image || (/\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(p.link||'')?safeLink(p.link):'');
-  return '<article class="post-card color-'+e(p.color)+' '+(p.pinned?'pinned':'')+'" data-post="'+e(p.id)+'" draggable="'+!readMode+'"><div class="card-content"><button class="card-title" data-detail="'+e(p.id)+'">'+e(p.title)+'</button>'+(image?'<button class="card-image-button" data-detail="'+e(p.id)+'" aria-label="查看 '+e(p.title)+' 圖片"><img src="'+e(image)+'" alt="'+e(p.title)+'" loading="lazy"></button>':'')+'<p>'+e(p.body)+'</p>'+(p.link?'<a class="attachment-link" href="'+e(p.link)+'" target="_blank" rel="noopener noreferrer">↗ 開啟附件或連結</a>':'')+'<div class="card-meta"><span>'+ (p.pinned?'📌 置頂提醒':'班級公告')+'</span><span>'+dateText(p.date)+'</span></div><div class="card-bottom"><button class="text-button" data-detail="'+e(p.id)+'">閱讀全文 <span>↗</span></button><div class="post-actions"><button class="card-icon" data-edit="'+e(p.id)+'" aria-label="編輯 '+e(p.title)+'">✎</button><button class="card-icon" data-pin="'+e(p.id)+'" aria-label="'+(p.pinned?'取消置頂':'置頂')+' '+e(p.title)+'">⌖</button><button class="card-icon" data-delete="'+e(p.id)+'" aria-label="移除 '+e(p.title)+'">×</button></div></div></div></article>';
+  return '<article class="post-card color-'+e(p.color)+' '+(p.pinned?'pinned':'')+'" data-post="'+e(p.id)+'" draggable="'+(!readMode&&canEdit)+'"><div class="card-content"><button class="card-title" data-detail="'+e(p.id)+'">'+e(p.title)+'</button>'+(image?'<button class="card-image-button" data-detail="'+e(p.id)+'" aria-label="查看 '+e(p.title)+' 圖片"><img src="'+e(image)+'" alt="'+e(p.title)+'" loading="lazy"></button>':'')+'<p>'+e(p.body)+'</p>'+(p.link?'<a class="attachment-link" href="'+e(p.link)+'" target="_blank" rel="noopener noreferrer">↗ 開啟附件或連結</a>':'')+'<div class="card-meta"><span>'+ (p.pinned?'📌 置頂提醒':'班級公告')+'</span><span>'+dateText(p.date)+'</span></div><div class="card-bottom"><button class="text-button" data-detail="'+e(p.id)+'">閱讀全文 <span>↗</span></button><div class="post-actions"><button class="card-icon" data-edit="'+e(p.id)+'" aria-label="編輯 '+e(p.title)+'">✎</button><button class="card-icon" data-pin="'+e(p.id)+'" aria-label="'+(p.pinned?'取消置頂':'置頂')+' '+e(p.title)+'">⌖</button><button class="card-icon" data-delete="'+e(p.id)+'" aria-label="移除 '+e(p.title)+'">×</button></div></div></div></article>';
 }
 function renderColumns() {
   const b=board(), posts=matchingPosts(), sections=activeFilter==='all'?b.sections:b.sections.filter(s=>s.id===activeFilter), q=$('searchInput').value.trim();
@@ -292,6 +349,14 @@ $('themeBtn').onclick=openAppearance; $('sectionsBtn').onclick=openSections;
 $('addPostBtn').onclick=()=>openPostDialog(); $('addBoardBtn').onclick=()=>openBoardDialog(); $('editBoardBtn').onclick=()=>openBoardDialog(true);
 $('searchInput').oninput=renderColumns;
 $('readModeBtn').onclick=()=>{readMode=!readMode;render();};
+$('cloudRefreshBtn').onclick=()=>refreshCloudState(true);
+$('shareBtn').onclick=()=>{
+  $('publicShareUrl').value=GAS_MODE?cloudPublicUrl:location.href.split('#')[0];
+  $('shareModeTitle').textContent=GAS_MODE?'雲端唯讀分享':'本機展示網址';
+  $('shareModeNote').textContent=GAS_MODE?'家長可跨裝置讀取最新公告，無法修改內容。':'目前資料只存在這台裝置，分享網址不會同步公告。';
+  $('shareDescription').textContent=GAS_MODE?'複製家長唯讀網址。管理密鑰不會包含在分享內容中。':'此版本尚未連接 GAS，網址只會顯示網站介面。';showDialog('shareDialog');
+};
+$('copyShareBtn').onclick=async()=>{try{await navigator.clipboard.writeText($('publicShareUrl').value);toast('唯讀網址已複製。');}catch{$('publicShareUrl').select();document.execCommand('copy');toast('唯讀網址已複製。');}};
 $('filterToggleBtn').onclick=()=>{
   $('boardControls').hidden=!$('boardControls').hidden;
   $('filterToggleBtn').setAttribute('aria-expanded',!$('boardControls').hidden);
@@ -350,7 +415,7 @@ $('detailEditBtn').onclick=()=>{closeDialog($('detailDialog'));openPostDialog(de
 $('detailImageBtn').onclick=()=>{$('largeImage').src=$('detailImage').src;showDialog('imageDialog');};
 $('confirmDeleteBtn').onclick=()=>{if(deleteCallback?.())closeDialog($('confirmDialog'));};
 $('undoBtn').onclick=()=>{
-  if(!undoSnapshot)return;try{localStorage.setItem(STORAGE_KEY,JSON.stringify(undoSnapshot));state=undoSnapshot;undoSnapshot=null;activeFilter='all';render();if($('sectionsDialog').open)renderSections();toast('已復原');}catch{toast('儲存空間不足，無法復原。');}
+  if(!undoSnapshot)return;try{localStorage.setItem(STORAGE_KEY,JSON.stringify(undoSnapshot));state=undoSnapshot;undoSnapshot=null;activeFilter='all';render();if($('sectionsDialog').open)renderSections();toast('已復原');queueCloudSave();}catch{toast('儲存空間不足，無法復原。');}
 };
 $('exportBtn').onclick=exportBackup;
 $('siteSettingsBtn').onclick=()=>{
@@ -398,3 +463,5 @@ $('columns').addEventListener('dragend',()=>{draggingId='';document.querySelecto
 $('columns').addEventListener('error',event=>{if(event.target instanceof HTMLImageElement)event.target.hidden=true;},true);
 render();
 if(loadWarning)toast(loadWarning);
+if(GAS_MODE)initializeCloud();
+document.addEventListener('visibilitychange',()=>{if(GAS_MODE&&!document.hidden&&!canEdit)refreshCloudState(false);});
